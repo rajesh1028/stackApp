@@ -3,6 +3,7 @@ const { UserModel } = require("../models/user.model")
 const jwt = require("jsonwebtoken");
 const bcrypt = require("bcrypt");
 require("dotenv").config();
+const fs = require("fs");
 
 const userRouter = express.Router();
 userRouter.use(express.json());
@@ -30,25 +31,54 @@ userRouter.post("/register", async (req, res) => {
 userRouter.post("/login", async (req, res) => {
     const { email, pwd } = req.body
     try {
-        const user = await UserModel.find({ email })
-        let hashed_pwd = user[0].pwd
+        const user = await UserModel.findOne({ email })
+        let hashed_pwd = user.pwd
+
         // const user = await UserModel.find({ email: email, pwd: pwd })
-        if (user.length > 0) {
-            bcrypt.compare(pwd, hashed_pwd, (err, result) => {
-                if (result) {
-                    const token = jwt.sign({ userID:user[0]._id }, process.env.key, {expiresIn:'1h'})
-                    res.send({ "msg": "Login Successful", "token": token });
-                } else {
-                    res.send("Wrong credentials");
-                }
-            })
-        } else {
-            res.send("Wrong credentials");
-        }
+        bcrypt.compare(pwd, hashed_pwd, (err, result) => {
+            if (result) {
+                const token = jwt.sign({ userID: user._id }, process.env.key, { expiresIn: '1h' })
+                const refresh_token = jwt.sign({ userID: user._id }, process.env.key, { expiresIn: '7d' })
+
+                res.send({ "msg": "Login Successful", "token": token });
+            } else {
+                res.send("Wrong credentials");
+            }
+        })
     } catch (error) {
         console.log(error)
         res.send("Error in login in")
     }
+})
+
+
+userRouter.post('/token', (req, res) => {
+    // refresh the damn token
+    const postData = req.body
+    // if refresh token exists
+    if ((postData.refreshToken) && (postData.refreshToken in tokenList)) {
+        const user = {
+            "email": postData.email,
+            "name": postData.name
+        }
+        const token = jwt.sign(user, config.secret, { expiresIn: config.tokenLife })
+        const response = {
+            "token": token,
+        }
+        // update the token in the list
+        tokenList[postData.refreshToken].token = token
+        res.status(200).json(response);
+    } else {
+        res.status(404).send('Invalid request')
+    }
+})
+
+userRouter.get("/logout", (req, res) => {
+    const token = req.headers.authorization?.split(" ")[1];
+    const b_data = JSON.parse(fs.readFileSync("./blacklist.json", "utf-8"));
+    b_data.push(token);
+    fs.writeFileSync("./blacklist.json", JSON.stringify(b_data));
+    res.send("Logout successful");
 })
 
 module.exports = { userRouter }
