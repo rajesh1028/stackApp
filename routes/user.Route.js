@@ -4,7 +4,7 @@ const jwt = require("jsonwebtoken");
 const bcrypt = require("bcrypt");
 require("dotenv").config();
 const fs = require("fs");
-
+const tokenList = {};
 const userRouter = express.Router();
 userRouter.use(express.json());
 
@@ -38,9 +38,15 @@ userRouter.post("/login", async (req, res) => {
         bcrypt.compare(pwd, hashed_pwd, (err, result) => {
             if (result) {
                 const token = jwt.sign({ userID: user._id }, process.env.key, { expiresIn: '1h' })
-                const refresh_token = jwt.sign({ userID: user._id }, process.env.key, { expiresIn: '7d' })
-
-                res.send({ "msg": "Login Successful", "token": token });
+                const refreshToken = jwt.sign({ userID: user._id }, process.env.key, { expiresIn: '7d' })
+                const response = {
+                    "status": "Logged in",
+                    token,
+                    refreshToken
+                }
+                tokenList[refreshToken] = response;
+                console.log(tokenList);
+                res.status(200).json(response);
             } else {
                 res.send("Wrong credentials");
             }
@@ -52,7 +58,7 @@ userRouter.post("/login", async (req, res) => {
 })
 
 
-userRouter.post('/token', (req, res) => {
+userRouter.post('/token', async (req, res) => {
     // refresh the damn token
     const postData = req.body
     // if refresh token exists
@@ -61,12 +67,16 @@ userRouter.post('/token', (req, res) => {
             "email": postData.email,
             "name": postData.name
         }
-        const token = jwt.sign(user, config.secret, { expiresIn: config.tokenLife })
+        const data = await UserModel.findOne({ "email":user.email })
+        console.log(data);
+
+        const token = jwt.sign({userID: data._id}, process.env.key, { expiresIn: "7d" })
         const response = {
             "token": token,
         }
         // update the token in the list
         tokenList[postData.refreshToken].token = token
+        console.log(tokenList);
         res.status(200).json(response);
     } else {
         res.status(404).send('Invalid request')
